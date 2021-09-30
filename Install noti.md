@@ -64,30 +64,34 @@ strip_num="`echo "$dir_restore_file" | grep -o "/" | wc -l`"
 #Restore a file from nearest repo which contain the lastest version of that file
 function extract()
 {
-	if [ $a -gt 0 ]; then
-		borg extract $repo::"version $a" $dir_restore_file$file --strip-components $strip_num
-		if [ $? -eq 0 ]; then
-        	chown nginx:nginx $file
-       		mv /tmp/$file $path
-        	cat <<EOF > /tmp/change.html
-        	<html>
-			<body>
-			<b>|$action WARNING|</b> -- File $file has been moved to ${file}.check for security reason
-        	<br><br>Here is the changed lines:
-        	<pre style="color:red"><code>`diff $path$file $path${file}.check`</code></pre>
-        	<br>If you are the one doing this action please move ${file}.check to $file
-			</body>
-			</html>
+        if [ $a -gt 0 ]; then
+                borg list $repo::"version $a"  | grep $dir_restore_file$file > /dev/null 
+                if [ "$?" -eq 0 ]; then
+                        borg extract $repo::"version $a" $dir_restore_file$file --strip-components $strip_num
+                	chown $user:$group $file
+                	mv /tmp/$file $path
+                        cmp -s $path$file $path${file}.check
+                        if [ "$?" -eq 1 ]; then
+                    cat <<EOF >> /tmp/change.html
+                ===========================================================================================
+                        <html>
+                        <body>
+                        <br><b>|$action WARNING|</b> -- File $path$file has modified recently
+                        <br><br>Here is the changed lines:
+                <pre style="color:red"><code>`diff $path$file $path${file}.check`</code></pre>
+                <br>If you are the one doing this action please move ${file}.check to $file
+                        </body>
+                        </html>
+                        ===========================================================================================
 EOF
-        /usr/bin/mailx -a /tmp/change.html -S smtp=$smtp_server -S from=$display_name -S smtp-auth=login -S smtp-auth-user="$smtp_username" -S smtp-auth-password="$smtp_pass" -S ssl-verify=ignore -S nss-config-dir=/etc/pki/nssdb/ -s "Wordpress Report" $send_to <<< "A suspected action is detected. Check the attachment
-Server Name: `hostname`
-IP: `hostname -I`
-Path: $path$file"
-		else
-			a=$((a-1))
-			extract $a
-    	fi
-	fi
+                        fi
+                	else
+                        	a=$((a-1))
+                        	extract $a
+        	fi
+        else
+                echo "Can't find that file in repo"
+        fi
 }
 
 #If file has php extension modified, move it to check extension
